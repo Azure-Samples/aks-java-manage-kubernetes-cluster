@@ -4,12 +4,12 @@ languages:
 - java
 products:
 - azure
-services: Kubernetescluster
-platforms: java
-author: yaohaizh
+extensions:
+- services: Kubernetescluster
+- platforms: java
 ---
 
-## Getting Started with Kubernetescluster - Manage Kubernetes Cluster - in Java ##
+# Getting Started with Kubernetescluster - Manage Kubernetes Cluster - in Java #
 
 
   Azure Container Service (AKS) sample for managing a Kubernetes cluster.
