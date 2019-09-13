@@ -4,9 +4,8 @@ languages:
 - java
 products:
 - azure
-extensions:
-- services: Kubernetescluster
-- platforms: java
+description: "Azure Container Service (AKS) sample for managing a Kubernetes cluster."
+urlFragment: aks-java-manage-kubernetes-cluster
 ---
 
 # Getting Started with Kubernetescluster - Manage Kubernetes Cluster - in Java #
