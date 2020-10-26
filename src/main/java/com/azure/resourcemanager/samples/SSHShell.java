@@ -1,10 +1,7 @@
-/**
- * Copyright (c) Microsoft Corporation. All rights reserved.
- * Licensed under the MIT License. See License.txt in the project root for
- * license information.
- */
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
-package com.microsoft.azure.management.samples;
+package com.azure.resourcemanager.samples;
 
 import com.jcraft.jsch.Channel;
 import com.jcraft.jsch.ChannelExec;
@@ -25,6 +22,8 @@ import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UnsupportedEncodingException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Hashtable;
 import java.util.List;
@@ -37,7 +36,7 @@ public final class SSHShell {
     private final ChannelShell channel;
     private final Expect4j expect;
     private final StringBuilder shellBuffer = new StringBuilder();
-    private List<Match> linuxPromptMatches =  new ArrayList<>();
+    private List<Match> linuxPromptMatches = new ArrayList<>();
 
     /**
      * Creates SSHShell.
@@ -47,8 +46,8 @@ public final class SSHShell {
      * @param userName the ssh user name
      * @param password the ssh password
      * @return the shell
-     * @throws JSchException
-     * @throws IOException
+     * @throws JSchException the JSchException
+     * @throws IOException the IOException
      */
     private SSHShell(String host, int port, String userName, String password)
             throws JSchException, IOException {
@@ -81,11 +80,11 @@ public final class SSHShell {
      * @param userName the ssh user name
      * @param sshPrivateKey the ssh password
      * @return the shell
-     * @throws JSchException
-     * @throws IOException
+     * @throws JSchException the JSchException
+     * @throws IOException the IOException
      */
     private SSHShell(String host, int port, String userName, byte[] sshPrivateKey)
-        throws JSchException, IOException {
+            throws JSchException, IOException {
         Closure expectClosure = getExpectClosure();
         for (String linuxPromptPattern : new String[]{"\\>", "#", "~#", "~\\$"}) {
             try {
@@ -135,7 +134,7 @@ public final class SSHShell {
      * @throws IOException IO exception thrown
      */
     public static SSHShell open(String host, int port, String userName, byte[] sshPrivateKey)
-        throws JSchException, IOException {
+            throws JSchException, IOException {
         return new SSHShell(host, port, userName, sshPrivateKey);
     }
 
@@ -172,49 +171,51 @@ public final class SSHShell {
      * @throws Exception exception thrown
      */
     public String executeCommand(String command, Boolean getExitStatus, Boolean withErr) throws Exception {
-        String result = "";
-        String resultErr = "";
+        StringBuilder result = new StringBuilder();
+        StringBuilder resultErr = new StringBuilder();
 
         Channel channel = this.session.openChannel("exec");
         ((ChannelExec) channel).setCommand(command);
         InputStream commandOutput = channel.getInputStream();
         InputStream commandErr = ((ChannelExec) channel).getErrStream();
         channel.connect();
-        byte[] tmp  = new byte[4096];
+        byte[] tmp = new byte[4096];
         while (true) {
             while (commandOutput.available() > 0) {
                 int i = commandOutput.read(tmp, 0, 4096);
                 if (i < 0) {
                     break;
                 }
-                result += new String(tmp, 0, i);
+                result.append(new String(tmp, 0, i, StandardCharsets.UTF_8));
             }
             while (commandErr.available() > 0) {
                 int i = commandErr.read(tmp, 0, 4096);
                 if (i < 0) {
                     break;
                 }
-                resultErr += new String(tmp, 0, i);
+                resultErr.append(new String(tmp, 0, i, StandardCharsets.UTF_8));
             }
             if (channel.isClosed()) {
                 if (commandOutput.available() > 0) {
                     continue;
                 }
                 if (getExitStatus) {
-                    result += "exit-status: " + channel.getExitStatus();
+                    result.append("exit-status: ").append(channel.getExitStatus());
                     if (withErr) {
-                        result += "\n With error:\n" + resultErr;
+                        result.append("\n With error:\n").append(resultErr);
                     }
                 }
                 break;
             }
             try {
                 Thread.sleep(100);
-            } catch (Exception ee) { }
+            } catch (Exception e) {
+                System.err.println(e.getMessage());
+            }
         }
         channel.disconnect();
 
-        return result;
+        return result.toString();
     }
 
     /**
@@ -237,7 +238,7 @@ public final class SSHShell {
 
         channel.disconnect();
 
-        return outputStream.toString();
+        return outputStream.toString("UTF-8");
     }
 
     /**
@@ -255,12 +256,13 @@ public final class SSHShell {
         channel.connect();
         String absolutePath = isUserHomeBased ? channel.getHome() + "/" + toPath : toPath;
 
-        String path = "";
+        StringBuilder path = new StringBuilder();
         for (String dir : absolutePath.split("/")) {
-            path = path + "/" + dir;
+            path.append("/" + dir);
             try {
-                channel.mkdir(path);
-            } catch (Exception ee) {
+                channel.mkdir(path.toString());
+            } catch (Exception e) {
+                System.err.println(e.getMessage());
             }
         }
         channel.cd(absolutePath);
@@ -289,6 +291,9 @@ public final class SSHShell {
 
     private Closure getExpectClosure() {
         return new Closure() {
+            /**
+             * @throws Exception thrown Exception
+             */
             public void run(ExpectState expectState) throws Exception {
                 String outputBuffer = expectState.getBuffer();
                 System.out.println(outputBuffer);
@@ -300,12 +305,13 @@ public final class SSHShell {
 
     /**
      * Automatically generate SSH keys.
+     *
      * @param passPhrase the byte array content to be uploaded
      * @param comment the name of the file for which the content will be saved into
      * @return SSH public and private key
      * @throws Exception exception thrown
      */
-    public static SshPublicPrivateKey generateSSHKeys(String passPhrase, String comment) throws Exception {
+    public static SshPublicPrivateKey generateSSHKeys(String passPhrase, String comment) throws UnsupportedEncodingException, JSchException {
         JSch jsch = new JSch();
         KeyPair keyPair = KeyPair.genKeyPair(jsch, KeyPair.RSA);
         ByteArrayOutputStream privateKeyBuff = new ByteArrayOutputStream(2048);
@@ -313,13 +319,13 @@ public final class SSHShell {
 
         keyPair.writePublicKey(publicKeyBuff, (comment != null) ? comment : "SSHCerts");
 
-        if (passPhrase == null  || passPhrase.isEmpty()) {
+        if (passPhrase == null || passPhrase.isEmpty()) {
             keyPair.writePrivateKey(privateKeyBuff);
         } else {
-            keyPair.writePrivateKey(privateKeyBuff, passPhrase.getBytes());
+            keyPair.writePrivateKey(privateKeyBuff, passPhrase.getBytes(StandardCharsets.UTF_8));
         }
 
-        return new SshPublicPrivateKey(privateKeyBuff.toString(), publicKeyBuff.toString());
+        return new SshPublicPrivateKey(privateKeyBuff.toString("UTF-8"), publicKeyBuff.toString("UTF-8"));
     }
 
     /**
@@ -331,6 +337,7 @@ public final class SSHShell {
 
         /**
          * Constructor.
+         *
          * @param sshPrivateKey SSH private key
          * @param sshPublicKey SSH public key
          */
@@ -341,6 +348,7 @@ public final class SSHShell {
 
         /**
          * Get SSH public key.
+         *
          * @return public key
          */
         public String getSshPublicKey() {
@@ -349,6 +357,7 @@ public final class SSHShell {
 
         /**
          * Get SSH private key.
+         *
          * @return private key
          */
         public String getSshPrivateKey() {
@@ -357,6 +366,7 @@ public final class SSHShell {
 
         /**
          * Set SSH public key.
+         *
          * @param sshPublicKey public key
          */
         public void setSshPublicKey(String sshPublicKey) {
@@ -365,6 +375,7 @@ public final class SSHShell {
 
         /**
          * Set SSH private key.
+         *
          * @param sshPrivateKey private key
          */
         public void setSshPrivateKey(String sshPrivateKey) {

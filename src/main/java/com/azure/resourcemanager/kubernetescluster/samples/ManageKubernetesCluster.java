@@ -1,20 +1,21 @@
-/**
- * Copyright (c) Microsoft Corporation. All rights reserved.
- * Licensed under the MIT License. See License.txt in the project root for
- * license information.
- */
-package com.microsoft.azure.management.kubernetescluster.samples;
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+package com.azure.resourcemanager.kubernetescluster.samples;
 
-import com.microsoft.azure.management.Azure;
-import com.microsoft.azure.management.containerservice.ContainerServiceVMSizeTypes;
-import com.microsoft.azure.management.containerservice.KubernetesCluster;
-import com.microsoft.azure.management.resources.fluentcore.arm.Region;
-import com.microsoft.azure.management.resources.fluentcore.utils.SdkContext;
-import com.microsoft.azure.management.samples.SSHShell;
-import com.microsoft.azure.management.samples.Utils;
-import com.microsoft.rest.LogLevel;
+import com.azure.core.credential.TokenCredential;
+import com.azure.core.http.policy.HttpLogDetailLevel;
+import com.azure.core.management.AzureEnvironment;
+import com.azure.identity.DefaultAzureCredentialBuilder;
+import com.azure.resourcemanager.AzureResourceManager;
+import com.azure.resourcemanager.containerservice.models.ContainerServiceVMSizeTypes;
+import com.azure.resourcemanager.containerservice.models.KubernetesCluster;
+import com.azure.core.management.Region;
+import com.azure.core.management.profile.AzureProfile;
+import com.azure.resourcemanager.samples.SSHShell;
+import com.azure.resourcemanager.samples.Utils;
+import com.jcraft.jsch.JSchException;
 
-import java.io.File;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Date;
@@ -30,14 +31,14 @@ public class ManageKubernetesCluster {
     /**
      * Main function which runs the actual sample.
      *
-     * @param azure instance of the azure client
+     * @param azureResourceManager instance of the azure client
      * @param clientId secondary service principal client ID
      * @param secret secondary service principal secret
      * @return true if sample runs successfully
      */
-    public static boolean runSample(Azure azure, String clientId, String secret) {
-        final String rgName = SdkContext.randomResourceName("rgaks", 15);
-        final String aksName = SdkContext.randomResourceName("akssample", 30);
+    public static boolean runSample(AzureResourceManager azureResourceManager, String clientId, String secret) throws IOException, JSchException {
+        final String rgName = Utils.randomResourceName(azureResourceManager, "rgaks", 15);
+        final String aksName = Utils.randomResourceName(azureResourceManager, "akssample", 30);
         final Region region = Region.US_EAST;
         String servicePrincipalClientId = clientId; // replace with a real service principal client id
         String servicePrincipalSecret = secret; // and corresponding secret
@@ -84,10 +85,10 @@ public class ManageKubernetesCluster {
 
             Date t1 = new Date();
 
-            KubernetesCluster kubernetesCluster = azure.kubernetesClusters().define(aksName)
+            KubernetesCluster kubernetesCluster = azureResourceManager.kubernetesClusters().define(aksName)
                 .withRegion(region)
                 .withNewResourceGroup(rgName)
-                .withLatestVersion()
+                .withDefaultVersion()
                 .withRootUsername(rootUserName)
                 .withSshKey(sshKeys.getSshPublicKey())
                 .withServicePrincipalClientId(servicePrincipalClientId)
@@ -111,7 +112,9 @@ public class ManageKubernetesCluster {
             t1 = new Date();
 
             kubernetesCluster.update()
-                .withAgentPoolVirtualMachineCount(2)
+                .updateAgentPool("agentpool")
+                    .withAgentPoolVirtualMachineCount(2)
+                    .parent()
                 .apply();
 
             t2 = new Date();
@@ -119,13 +122,10 @@ public class ManageKubernetesCluster {
             Utils.print(kubernetesCluster);
 
             return true;
-        } catch (Exception f) {
-            System.out.println(f.getMessage());
-            f.printStackTrace();
         } finally {
             try {
                 System.out.println("Deleting Resource Group: " + rgName);
-                azure.resourceGroups().beginDeleteByName(rgName);
+                azureResourceManager.resourceGroups().beginDeleteByName(rgName);
                 System.out.println("Deleted Resource Group: " + rgName);
             } catch (NullPointerException npe) {
                 System.out.println("Did not create any resources in Azure. No clean up is necessary");
@@ -133,7 +133,6 @@ public class ManageKubernetesCluster {
                 g.printStackTrace();
             }
         }
-        return false;
     }
 
     /**
@@ -146,17 +145,21 @@ public class ManageKubernetesCluster {
             //=============================================================
             // Authenticate
 
-            final File credFile = new File(System.getenv("AZURE_AUTH_LOCATION"));
+            final AzureProfile profile = new AzureProfile(AzureEnvironment.AZURE);
+            final TokenCredential credential = new DefaultAzureCredentialBuilder()
+                .authorityHost(profile.getEnvironment().getActiveDirectoryEndpoint())
+                .build();
 
-            Azure azure = Azure.configure()
-                .withLogLevel(LogLevel.BODY)
-                .authenticate(credFile)
+            AzureResourceManager azureResourceManager = AzureResourceManager
+                .configure()
+                .withLogLevel(HttpLogDetailLevel.BASIC)
+                .authenticate(credential, profile)
                 .withDefaultSubscription();
 
             // Print selected subscription
-            System.out.println("Selected subscription: " + azure.subscriptionId());
+            System.out.println("Selected subscription: " + azureResourceManager.subscriptionId());
 
-            runSample(azure, "", "");
+            runSample(azureResourceManager, "", "");
         } catch (Exception e) {
             System.out.println(e.getMessage());
             e.printStackTrace();
